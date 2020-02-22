@@ -114,7 +114,7 @@ void loop() {
     printReading(reading, sound);
     
     message = (String) reading;
-    Serial1.print("Message is :  ");
+    Serial1.print("RSSI value is:  ");
     Serial1.println(message);
     sendPosition = 0;
     while (Serial1.availableForWrite() == 0) {
