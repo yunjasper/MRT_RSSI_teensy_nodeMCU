@@ -6,7 +6,7 @@
   Added serial communication with nodeMCU to display
   the RSSI values on the website
 
-   Date:   Feb 20, 2020
+   Date:   Feb 26, 2020
    Author: Jasper Yun
 */
 
@@ -18,21 +18,22 @@
 
 #include <Arduino.h>
 #include <LiquidCrystal.h>
-#include <math.h> // for exponentials
 
-
-boolean pause = false;
+boolean pause = false;  // booleans for hardware (button) interrupt functionality
 boolean isBuzzer = true;
 
-int previousRSSI;
-int previousTone;
-String previousMessage;
+int previousRSSI; // for the pause functionality, remember last value of RSSI value received
+int previousTone; // and the corresponding buzzer tone
+
+String previousMessage; // strings for sending messages over serial
 String message;
 
+// variables for sending messages over serial
 int arrayPosition = 0;
 unsigned int sendPosition = 0;
 int stringLength = 0;
 
+// array of test RSSI values to iterate through to simulate receiving RSSI data from xtend
 int test_RSSI[] = {-40, -45, -50, -55, -60, -65, -70, -75, -80, -85, -90, -95, -100, -105, -110};
 
 // initialize the library by associating any needed LCD interface pin
@@ -49,6 +50,7 @@ void printReading(int i, int sound);
 
 /*
  * Setup function sets pin modes and welcomes the user with a message on the LCD.
+ * Also sets up the interrupt pins and begins hardware serial 1 (RX1, TX1) at 115200 baud.
  */
 void setup() {
   Serial1.begin(115200); // match baud rate of nodeMCU
@@ -72,84 +74,100 @@ void setup() {
 }
 
 /*
- *  Main loop. Reads potentiometer and adjusts that output to the buzzer frequency.
+ *  Main loop. Reads "input" from the test_RSSI[] array and maps it to a buzzer tone and sends
+ * the RSSI value over serial to the nodeMCU.
  */
 void loop() {
-  if (pause) {
-    lcd.setCursor(0,1);
+  if (pause) 
+  {
+    lcd.setCursor(0,1); // alert user that device is paused
     lcd.print("PAUSED");
     
-    while (Serial1.availableForWrite() == 0) {
-      if (sendPosition < previousMessage.length()) {
+    while (Serial1.availableForWrite() == 0) // write as many bytes as possible through serial
+    {  
+      if (sendPosition < previousMessage.length()) // if we have not reached the end of the message
+      {
         Serial1.write((char) previousMessage[sendPosition]);
-        //Serial.print(previousMessage[sendPosition]);
         sendPosition++;
-      } else {
-        Serial1.write('\n');
+      } 
+      else 
+      {
+        Serial1.write('\n');  // end of message, append newline character
         Serial1.println();
-        sendPosition = 0;
-        message = "";
+        sendPosition = 0; // reset sendPosition for next message
+        message = ""; // reset the message string
         break;  // stop the send process
       }
-     
-      
     }
     
-    if (isBuzzer) {
-      tone(buzzer, previousTone);
+    if (isBuzzer) // isBuzzer == true when we want to play the tone through the buzzer
+    {
+      tone(buzzer, previousTone); // play the previous tone for 1 second
       delay(1000);
       noTone(buzzer);
-    } else {
+    } 
+    else // otherwise, play the tone through the headphones
+    {
       tone(headphones, previousTone);
       delay(1000);
       noTone(headphones);
     }
     
-  } else {
-    int reading = test_RSSI[arrayPosition];
-    int sound = map(reading, -110, -40, 125, 3000);
+  } 
+
+  else // if not paused
+  {
+    int reading = test_RSSI[arrayPosition]; // "read" new input
+    int sound = map(reading, -110, -40, 125, 3000); // map reading to tone between 125 to 3000 Hz
     previousRSSI = reading; // update previous RSSI and tone values
     previousTone = sound;
     
-    printReading(reading, sound);
+    printReading(reading, sound); // prints the reading and the tone frequency on LCD
     
-    message = (String) reading;
+    message = (String) reading; // send the RSSI reading to the nodeMCU
     Serial1.print("RSSI value is:  ");
     Serial1.println(message);
+    
     sendPosition = 0;
-    while (Serial1.availableForWrite() == 0) {
-      if (sendPosition < message.length()) {
+    while (Serial1.availableForWrite() == 0) 
+    {
+      if (sendPosition < message.length()) 
+      {
         Serial1.write((char) message[sendPosition]);
-        //Serial.print(message[sendPosition]);
         sendPosition++;
-      } else {
+      } 
+      
+      else // end of message, append newline character
+      {
         Serial1.write('\n');
         Serial1.println();
         sendPosition = 0;
         message = "";
         break;  // stop the send process
       }
-     
-      
     }
 
-    if (isBuzzer) {
+    if (isBuzzer) // play tone through the buzzer if true
+    { 
       tone(buzzer, sound);  // play tone
       delay(500);
       noTone(buzzer);       // stop tone; required for buzzer to sound
       delay(500);
-    } else {
+    } 
+    else // play tone through headphones otherwise
+    {
       tone(headphones, sound);
       delay(500);
       noTone(buzzer);
       delay(500);
       }
-  }
+  } // end of else case (i.e. if not paused)
   
+  // used to iterate through the array of test_RSSI values
   if (arrayPosition > 14) arrayPosition = 0;
   else arrayPosition++;
-  delay(1000);
   
+  delay(1000);
 }
 
 /*
@@ -160,7 +178,7 @@ void pauseLCD() {
   pause = !pause;
 }
 
-/* Interrupt service routine changes boolean to contol whether sound output
+/* Interrupt service routine changes boolean isBuzzer to contol whether sound output
  * is on headphones or buzzer.
  */
 void chooseHeadphones() {
@@ -176,21 +194,21 @@ void welcome() {
   lcd.setCursor(0, 0);
   lcd.print("Welcome!");
   delay(1500);
-  lcd.setCursor(0, 1);
-  lcd.print("Turn 10k pot");
-  delay(1000);
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Input read:");
+  lcd.print("Input:");
   lcd.setCursor(0, 1);
-  return;
 }
 
-void printReading(int i, int sound) {
+/*
+ * Prints the reading to the LCD. Takes input parameters
+ * of the RSSI value (int) and the buzzer frequency tone (int).
+ */ 
+void printReading(int RSSIvalue, int sound) {
   lcd.clear();
   lcd.setCursor(0,0);
-  lcd.print("Input read: ");
-  lcd.print(i);
+  lcd.print("Input: ");
+  lcd.print(RSSIvalue);
   lcd.print(" dB");
   lcd.setCursor(0,1);
   lcd.print(sound);
